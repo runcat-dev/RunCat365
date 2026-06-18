@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: "Has your issue already been reported?"
+    url: "https://github.com/issues?q=repo%3Aruncat-dev%2FRunCat365"
+    about: "Please check the list of existing issues before opening a new one to avoid duplicates."
