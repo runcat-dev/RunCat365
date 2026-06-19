@@ -50,6 +50,13 @@ module.exports = async ({ github, context }) => {
         body: commentBody
       });
 
+      await github.rest.issues.addLabels({
+        owner: owner,
+        repo: repo,
+        issue_number: issue.number,
+        labels: ['potential-duplicate']
+      });
+
       console.log(`Found ${items.length} potential duplicates and commented.`);
     } else {
       console.log("No potential duplicates found.");
