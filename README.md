@@ -50,8 +50,7 @@ We welcome anyone interested in contributing to RunCat.
 However, please note that this is a place for discussing features, not for submitting requests.
 For requests, please create an Issue according to the template.
 
-Portal: https://runcat-dev.github.io  
-Discord: https://discord.gg/wja3mmHt9z
+Portal: https://runcat-dev.github.io
 
 ## Contributors
 
