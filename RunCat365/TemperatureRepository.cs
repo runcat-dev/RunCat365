@@ -75,10 +75,14 @@ namespace RunCat365
         private const float MIN_VALID_TEMPERATURE_CELSIUS = -50.0f;
         private const float MAX_VALID_TEMPERATURE_CELSIUS = 150.0f;
         private const int REFRESH_INTERVAL_TICKS = 30;
+        private const int STALE_READ_THRESHOLD = 24;
 
         private readonly TemperaturePerformanceCounters? counters;
+        private readonly List<float> baselineRawValues = [];
         private TemperatureInfo? temperatureInfo;
         private int ticksSinceLastRefresh;
+        private int identicalReadCount;
+        private bool hasEverVaried;
 
         internal bool IsAvailable => counters is not null;
 
@@ -99,6 +103,8 @@ namespace RunCat365
             }
 
             var rawValues = counters.ReadValues();
+            TrackValueVariation(rawValues);
+
             var temperaturesCelsius = new List<float>(rawValues.Count);
             foreach (var temperatureKelvin in rawValues)
             {
@@ -108,13 +114,50 @@ namespace RunCat365
                 temperaturesCelsius.Add(temperatureCelsius);
             }
 
-            temperatureInfo = temperaturesCelsius.Count == 0
+            temperatureInfo = temperaturesCelsius.Count == 0 || IsLikelyPlaceholder()
                 ? null
                 : new TemperatureInfo
                 {
                     AverageCelsius = temperaturesCelsius.Average(),
                     MaximumCelsius = temperaturesCelsius.Max()
                 };
+        }
+
+        // Some firmware exposes an ACPI thermal zone that is not wired to a real
+        // sensor and always reports the same fixed value (e.g. 301 K). Track whether
+        // the readings have ever changed so such zones can be treated as unavailable
+        // instead of showing a misleading constant temperature.
+        private void TrackValueVariation(List<float> rawValues)
+        {
+            if (hasEverVaried || rawValues.Count == 0) return;
+
+            var sortedValues = new List<float>(rawValues);
+            sortedValues.Sort();
+
+            if (baselineRawValues.Count != sortedValues.Count)
+            {
+                baselineRawValues.Clear();
+                baselineRawValues.AddRange(sortedValues);
+                identicalReadCount = 1;
+                return;
+            }
+
+            for (var i = 0; i < sortedValues.Count; i++)
+            {
+                if (baselineRawValues[i] != sortedValues[i])
+                {
+                    hasEverVaried = true;
+                    baselineRawValues.Clear();
+                    return;
+                }
+            }
+
+            identicalReadCount += 1;
+        }
+
+        private bool IsLikelyPlaceholder()
+        {
+            return !hasEverVaried && STALE_READ_THRESHOLD <= identicalReadCount;
         }
 
         internal TemperatureInfo? Get()
