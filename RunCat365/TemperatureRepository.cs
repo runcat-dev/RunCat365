@@ -69,6 +69,18 @@ namespace RunCat365
         }
     }
 
+    internal sealed class TemperatureHighPrecisionPerformanceCounters : InstancedPerformanceCounters
+    {
+        protected override string CategoryName => "Thermal Zone Information";
+        protected override string CounterName => "High Precision Temperature";
+
+        internal static TemperatureHighPrecisionPerformanceCounters? TryCreate()
+        {
+            var instance = new TemperatureHighPrecisionPerformanceCounters();
+            return instance.TryInitialize() ? instance : null;
+        }
+    }
+
     internal class TemperatureRepository
     {
         private const float KELVIN_TO_CELSIUS_OFFSET = 273.15f;
@@ -78,6 +90,7 @@ namespace RunCat365
         private const int STALE_READ_THRESHOLD = 24;
 
         private readonly TemperaturePerformanceCounters? counters;
+        private readonly TemperatureHighPrecisionPerformanceCounters? highPrecisionCounters;
         private readonly List<float> baselineRawValues = [];
         private TemperatureInfo? temperatureInfo;
         private int ticksSinceLastRefresh;
@@ -89,6 +102,7 @@ namespace RunCat365
         internal TemperatureRepository()
         {
             counters = TemperaturePerformanceCounters.TryCreate();
+            highPrecisionCounters = TemperatureHighPrecisionPerformanceCounters.TryCreate();
         }
 
         internal void Update()
@@ -100,10 +114,12 @@ namespace RunCat365
             {
                 ticksSinceLastRefresh = 0;
                 counters.RefreshInstances();
+                highPrecisionCounters?.RefreshInstances();
             }
 
             var rawValues = counters.ReadValues();
-            TrackValueVariation(rawValues);
+            var variationValues = highPrecisionCounters is null ? rawValues : highPrecisionCounters.ReadValues();
+            TrackValueVariation(variationValues);
 
             var temperaturesCelsius = new List<float>(rawValues.Count);
             foreach (var temperatureKelvin in rawValues)
@@ -126,7 +142,12 @@ namespace RunCat365
         // Some firmware exposes an ACPI thermal zone that is not wired to a real
         // sensor and always reports the same fixed value (e.g. 301 K). Track whether
         // the readings have ever changed so such zones can be treated as unavailable
-        // instead of showing a misleading constant temperature.
+        // instead of showing a misleading constant temperature. Variation is tracked
+        // on the "High Precision Temperature" counter (0.1 K granularity) when it is
+        // available, because a live sensor jitters at that resolution even when the
+        // whole-Kelvin "Temperature" counter stays flat on an idle machine; the
+        // tracking source is fixed at construction so values are never compared
+        // across the two counters' different scales.
         private void TrackValueVariation(List<float> rawValues)
         {
             if (hasEverVaried || rawValues.Count == 0) return;
@@ -168,6 +189,7 @@ namespace RunCat365
         internal void Close()
         {
             counters?.Close();
+            highPrecisionCounters?.Close();
         }
     }
 }
